@@ -111,9 +111,6 @@ public class MultipleChannelsQuantification implements Command {
 	
 	public void cytomeasure(ImagePlus cimp, ImagePlus nmask) {
 		
-		// Get slice number (frame number, but getNFrames() doesn't work)
-		int numFrames = cimp.getNSlices();
-		
 		// Create roi manager and measurement table option
 		RoiManager rm = new RoiManager();
 		int options = Measurements.MEAN;
