@@ -1,5 +1,19 @@
 package ch.epfl.bii.ij2command;
 
+/*
+ *  BIO-410 Bioimage Informatics Homework B
+ *  Author: Yung-Cheng Chiang
+ *  Latest update: 2023/03/27
+ *  
+ *  Abstract:
+ *  The plugin computes the gene expression (in form of fluorescence) of the cytoplasm 
+ *  at the very close periphery of every nucleus in a sequence of images. The input should includes two stacks, 
+ *  one for nucleus and the other for cytoplasm. The plugin first generates a mask of nucleus 
+ *  and then overlays ROIs onto the cytoplasm image. The measured values would be plotted into 
+ *  a time vs. intensity scatter plot.
+ *  
+ */
+
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -7,11 +21,9 @@ import org.scijava.plugin.Plugin;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.plugin.ImageCalculator;
-import ij.process.ImageProcessor;
 import ij.gui.Roi;
 import ij.plugin.frame.RoiManager;
 import ij.measure.Measurements;
-import ij.measure.ResultsTable;
 import ij.gui.Plot;
 import ij.gui.PlotWindow;
 
@@ -98,6 +110,10 @@ public class MultipleChannelsQuantification implements Command {
 	}
 	
 	public void cytomeasure(ImagePlus cimp, ImagePlus nmask) {
+		
+		// Get slice number (frame number, but getNFrames() doesn't work)
+		int numFrames = cimp.getNSlices();
+		
 		// Create roi manager and measurement table option
 		RoiManager rm = new RoiManager();
 		int options = Measurements.MEAN;
@@ -113,9 +129,8 @@ public class MultipleChannelsQuantification implements Command {
 		// Go through and update ROIs from outline to band
 		// During the update, calculate the mean intensity of fluorescence and plot it
 		int nR = rm.getCount();
-		//System.out.println("nR: " + nR);
 		// time frame for x-axis matching
-		double t = 1;
+		// double t = 1;
 		double[] tlist = new double[nR];
 		double[] meanlist = new double[nR];
 		
@@ -123,26 +138,19 @@ public class MultipleChannelsQuantification implements Command {
 		Roi[] roiArray = rm.getRoisAsArray();
 		// Loop through all ROI
 		for (Roi roi : roiArray) {
-			// add individual ROI onto the cyto image
+			// select ROI, get the frame number and rm index of this ROI
 			cimp.setRoi(roi);
-			// get time information, update t if necessary
-			String rName = roi.getName();
-			String rframe = rName.substring(0, 4).replaceFirst("^0+(?!$)", "");
-			int rt = Integer.parseInt(rframe);
-			if (rt != t) {
-				t = t+1;
-			}
+			int frame = roi.getPosition() - 1;
+			int roiIndex = rm.getRoiIndex(roi);
 			// update ROI from outline to circular band
 			IJ.run(cimp, "Make Band...", "band=5");
 			Roi modifiedRoi = cimp.getRoi();
-			int roiIndex = rm.getRoiIndex(roi);
 			rm.setRoi(modifiedRoi, roiIndex);
-			tlist[roiIndex] = t;
+			// add the measurement to tlist and meanlist for later plotting
+			tlist[roiIndex] = frame;
 			meanlist[roiIndex] = cimp.getStatistics(options).mean;
 		}
-		
-		//cimp.show();
-		
+		// composite image was created manually after the analysis
 		// add data points in tlist and meanlist to scatterplot
 		scatterPlot.addPoints(tlist, meanlist, PlotWindow.CIRCLE);
 		scatterPlot.show();

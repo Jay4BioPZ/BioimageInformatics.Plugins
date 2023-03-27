@@ -12,8 +12,8 @@ public class MultipleChannelsQuantificationTest {
         ij.ui().showUI();
         
         // Open 2 images
-        String imagePath1 = "C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Homework/Homework C-Quantification 2 channels/exp1/nucleus.tif";
-        String imagePath2 = "C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Homework/Homework C-Quantification 2 channels/exp1/cyto.tif";
+        String imagePath1 = "C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Homework/Homework C-Quantification 2 channels/exp2/nucleus.tif";
+        String imagePath2 = "C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Homework/Homework C-Quantification 2 channels/exp2/cyto.tif";
         
         Opener opener = new Opener();
         ImagePlus image1 = opener.openImage(imagePath1);
