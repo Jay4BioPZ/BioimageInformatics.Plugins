@@ -1,7 +1,7 @@
 package ch.epfl.bii.ij2command;
 
 /*
- *  BIO-410 Bioimage Informatics Homework B
+ *  BIO-410 Bioimage Informatics Homework C
  *  Author: Yung-Cheng Chiang
  *  Latest update: 2023/03/27
  *  
