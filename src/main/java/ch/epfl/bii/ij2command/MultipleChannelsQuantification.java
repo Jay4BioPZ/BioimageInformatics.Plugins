@@ -132,21 +132,24 @@ public class MultipleChannelsQuantification implements Command {
 		double[] meanlist = new double[nR];
 		
 		// Get ROI list
-		Roi[] roiArray = rm.getRoisAsArray();
+		Roi[] roiArray = rm.getRoisAsArray(); //将由make particles生成的、在roi manager内的rois存成一个array
 		// Loop through all ROI
+		// 对于每个在array内的单个roi, 进行以下操作
 		for (Roi roi : roiArray) {
 			// select ROI, get the frame number and rm index of this ROI
-			cimp.setRoi(roi);
-			int frame = roi.getPosition() - 1;
-			int roiIndex = rm.getRoiIndex(roi);
+			// cimp是ImagePlus图档
+			cimp.setRoi(roi); // 把它投放到cimp图上，会看到某个frame的某个位置圈出了黄色的outline
+			int frame = roi.getPosition() - 1; // 记录这个roi所在的time frame，以便等一下画图
+			int roiIndex = rm.getRoiIndex(roi); // 记录这个roi在roi manager里面所处的顺序，以便等一下画图
 			// update ROI from outline to circular band
-			IJ.run(cimp, "Make Band...", "band=5");
-			Roi modifiedRoi = cimp.getRoi();
-			rm.setRoi(modifiedRoi, roiIndex);
+			IJ.run(cimp, "Make Band...", "band=5"); // 将这个选好的outline转换成5pixel的band
+			Roi modifiedRoi = cimp.getRoi(); // 选取band
+			rm.setRoi(modifiedRoi, roiIndex); // 用band取代outline
 			// add the measurement to tlist and meanlist for later plotting
-			tlist[roiIndex] = frame;
-			meanlist[roiIndex] = cimp.getStatistics(options).mean;
+			tlist[roiIndex] = frame; // 把frame(时间, 也就是scatterplot的x-axis)存到tlist里面
+			meanlist[roiIndex] = cimp.getStatistics(options).mean; // 测量band位置的mean, 存到meanlist里面
 		}
+		// 全部roi都改成band，并且测量、储存完数据之后再一并画scatterplot
 		// composite image was created manually after the analysis
 		// add data points in tlist and meanlist to scatterplot
 		scatterPlot.addPoints(tlist, meanlist, PlotWindow.CIRCLE);
