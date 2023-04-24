@@ -10,14 +10,18 @@ public class Spot {
 	public int y;
 	public int t;
 	// to build a graph if needed
+	// "next" become a "spot object" in this class
 	private Spot next = null;
 	private Color color;
 
 	// assign a random color to the spot
 	public Spot(int x, int y, int t) {
+		// "this" refer to the current object. 
+		// For user to have access to object attributes 
 		this.x = x;
 		this.y = y;
 		this.t = t;
+		// generate a random color
 		color = Color.getHSBColor((float)Math.random(), 1f, 1f);
 		color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 120);
 	}
@@ -36,7 +40,7 @@ public class Spot {
 		int radius = 5;
 		OvalRoi roi = new OvalRoi(xp - radius, yp - radius, 2 * radius, 2 * radius);
 		// display roi in the t+1 frame (t is one-based)
-		roi.setPosition(t+1); // display roi in one frqme
+		roi.setPosition(t+1); // display roi in one frame
 		roi.setStrokeColor(new Color(255, 0, 0, 120));
 		roi.setStrokeWidth(1);
 		overlay.add(roi);
@@ -52,10 +56,12 @@ public class Spot {
 		//overlay.add(text);
 	}
 	
+	// usage: current.link(next);
 	public void link(Spot a) {
+		// if a is null, do nothing and return
 		if (a == null)
 			return;
-		a.next = this;
+		a.next = this; // take the spot "current" as the next spot of "a" a->current
 		a.color = this.color;
 	}
 	
