@@ -1,9 +1,37 @@
 package ch.epfl.bii.ij2command;
 
+/*
+ *  BIO-410 Bioimage Informatics Homework D
+ *  Author: Yung-Cheng Chiang
+ *  Latest update: 2023/04/29
+ *  
+ *  Abstract:
+ *  The plugin computes track spots in a sequence of images with a tracking-
+ *  by detection approach. The detection is done with a DoG filter followed by 
+ *  a local max filtering. The association of the detection involves two types of
+ *  methods: thresholding or cost function (with different regulation strength).
+ *  
+ *  The cost function method includes two terms: the distance and the variation
+ *  of intensity. Parameter lambda determines their relative importance on the cost.
+ *  
+ *  The fine-tuning procedure reveals that "THE BEST LAMBDA SHOULD BE EITHER 0 OR 
+ *  VALUE CLOSE TO 0". 
+ *  
+ *  As we increase lambda, we saw gradual increase in long distance association between
+ *  spots, which is obviously incorrect. This might be because of the low intensity 
+ *  difference between spots of the given samples. In such conditions, distance is a 
+ *  more distinguishable feature.
+ *  
+ *  Last but not least, an additional method `offspring()` was introduced in the `Spot`
+ *  class for identifying possible division events. This was done simply by coloring spots
+ *  very close to each other with the same color. 
+ */
+
 import java.util.ArrayList;
 
 import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.scijava.command.Command;
+import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
 
 import ij.IJ;
@@ -20,17 +48,22 @@ import ij.process.ImageProcessor;
 // 5. Link the local maxima
 //  5.1. Loop over the frames
 //  5.2. Loop over the spots in current frame and next frame
-//  5.4. Using a GOOD COST FUNCTION to determine if the two spots are linked
+//  5.3. Use a GOOD COST FUNCTION to determine if the two spots are linked
+//     - method 1: thresholding. Link the first spot that have a distance < threshold
+//     - method 2: cost function c(xt, xt+1). Sweep over all spot candidates and link the one with the least cost
 // 6. Display the result
 
 @Plugin(type = Command.class, menuPath = "Plugins>BII 2023>Homework Tracking Template")
 public class ParticleTracking implements Command {
-	// the template for the homework
+	
+	// pass parameter from the ParticleTrackingTest()
+	@Parameter
+	private double lambda; // lambda ~ 0 is the best !!!
+	
 	public void run() {
 		// for model selection
 		boolean method1 = false;
 		boolean method2 = true;
-		double lambda = 0.3;
 		
 		// for dog and localmax
 		double sigma = 5;
@@ -42,8 +75,9 @@ public class ParticleTracking implements Command {
 		int xmax = imp.getWidth();
 		int ymax = imp.getHeight();
 		
-		// for method 1
-		double distance_max = 5;
+		// for method 1 thresholding
+		// for method 2 finding offspring
+		double distance_max = 15;
 		
 		// for method 2
 		double fmax = findMax(imp, nt);
@@ -94,6 +128,10 @@ public class ParticleTracking implements Command {
 							min_ind = ind;
 						}
 						ind++;
+						// identify possible offspring
+						if (current.distance(next) < distance_max) {
+							current.offspring(next);
+						}
 					}
 				}
 				// link the spot with the minimum cost
@@ -194,6 +232,9 @@ public class ParticleTracking implements Command {
 		return fmax;
 	}
 	
+	// find whether there is an ancestor in the neighborhood
+	// if 
+
 	// get the coordinates of the image
 	public double findIntdiff(ImagePlus imp, int t, Spot current, Spot next) {
 		imp.setSlice(t+1);

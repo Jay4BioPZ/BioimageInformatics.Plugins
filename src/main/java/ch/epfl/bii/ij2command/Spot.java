@@ -38,12 +38,15 @@ public class Spot {
 		double xp = x + 0.5;
 		double yp = y + 0.5;
 		int radius = 5;
+		// OvalRoi is a class in ImageJ, which is a circle
 		OvalRoi roi = new OvalRoi(xp - radius, yp - radius, 2 * radius, 2 * radius);
 		// display roi in the t+1 frame (t is one-based)
 		roi.setPosition(t+1); // display roi in one frame
+		// display the circle outline
 		roi.setStrokeColor(new Color(255, 0, 0, 120));
 		roi.setStrokeWidth(1);
 		overlay.add(roi);
+		// draw trajectory
 		if (next != null) {
 			Line line = new Line(x, y, next.x, next.y);
 			line.setStrokeColor(color);
@@ -62,6 +65,15 @@ public class Spot {
 		if (a == null)
 			return;
 		a.next = this; // take the spot "current" as the next spot of "a" a->current
+		a.color = this.color;
+	}
+	
+	// color the spots with the same color (without linking it) 
+	// if they are very close to each other (considered as a result of division)
+	public void offspring(Spot a) {
+		// if a is null, do nothing and return
+		if (a == null)
+			return;
 		a.color = this.color;
 	}
 	
