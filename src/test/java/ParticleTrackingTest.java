@@ -1,4 +1,4 @@
-import ch.epfl.bii.ij2command.ParticleTracking;
+import ch.epfl.bii.ij2command.ParticleTracking.ParticleTracking;
 import ij.IJ;
 import ij.ImagePlus;
 import net.imagej.ImageJ;

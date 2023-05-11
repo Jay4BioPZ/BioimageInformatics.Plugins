@@ -1,4 +1,4 @@
-package ch.epfl.bii.ij2command;
+package ch.epfl.bii.ij2command.TirfTracking;
 import java.awt.Color;
 
 import ij.gui.Line;
@@ -34,23 +34,22 @@ public class Spot {
 	}
 
 	// draw the spot and the link to the next spot
-	public void draw(Overlay overlay) {
+	public void draw(Overlay overlay, int radius) {
 		double xp = x + 0.5;
 		double yp = y + 0.5;
-		int radius = 5;
 		// OvalRoi is a class in ImageJ, which is a circle
-		OvalRoi roi = new OvalRoi(xp - radius, yp - radius, 2 * radius, 2 * radius);
+		// OvalRoi roi = new OvalRoi(xp - radius, yp - radius, 2 * radius, 2 * radius);
 		// display roi in the t+1 frame (t is one-based)
-		roi.setPosition(t+1); // display roi in one frame
+		//roi.setPosition(t+1); // display roi in one frame
 		// display the circle outline
-		roi.setStrokeColor(new Color(255, 0, 0, 120));
-		roi.setStrokeWidth(1);
-		overlay.add(roi);
+		//roi.setStrokeColor(new Color(255, 0, 0, 120));
+		//roi.setStrokeWidth(1);
+		//overlay.add(roi);
 		// draw trajectory
 		if (next != null) {
 			Line line = new Line(x, y, next.x, next.y);
 			line.setStrokeColor(color);
-			line.setStrokeWidth(2);
+			line.setStrokeWidth(0.5);
 			overlay.add(line);
 		}
 		

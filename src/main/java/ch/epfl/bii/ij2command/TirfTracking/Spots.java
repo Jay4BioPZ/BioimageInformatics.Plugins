@@ -1,4 +1,4 @@
-package ch.epfl.bii.ij2command;
+package ch.epfl.bii.ij2command.TirfTracking;
 import java.util.ArrayList;
 
 public class Spots extends ArrayList<Spot> {

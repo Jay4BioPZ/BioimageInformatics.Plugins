@@ -1,30 +1,11 @@
-package ch.epfl.bii.ij2command;
+package ch.epfl.bii.ij2command.TirfTracking;
 
 /*
- *  BIO-410 Bioimage Informatics Homework D
+ *  BIO-410 Bioimage Informatics Miniproject - TIRF protein tracking
  *  Author: Yung-Cheng Chiang
  *  Latest update: 2023/04/29
  *  
  *  Abstract:
- *  The plugin computes track spots in a sequence of images with a tracking-
- *  by detection approach. The detection is done with a DoG filter followed by 
- *  a local max filtering. The association of the detection involves two types of
- *  methods: thresholding or cost function (with different regulation strength).
- *  
- *  The cost function method includes two terms: the distance and the variation
- *  of intensity. Parameter lambda determines their relative importance on the cost.
- *  
- *  The fine-tuning procedure reveals that "THE BEST LAMBDA SHOULD BE EITHER 0 OR 
- *  VALUE CLOSE TO 0". 
- *  
- *  As we increase lambda, we saw gradual increase in long distance association between
- *  spots, which is obviously incorrect. This might be because of the low intensity 
- *  difference between spots of the given samples. In such conditions, distance is a 
- *  more distinguishable feature.
- *  
- *  Last but not least, an additional method `offspring()` was introduced in the `Spot`
- *  class for identifying possible division events. This was done simply by coloring spots
- *  very close to each other with the same color. 
  */
 
 import java.util.ArrayList;
@@ -49,37 +30,35 @@ import ij.process.ImageProcessor;
 //  5.1. Loop over the frames
 //  5.2. Loop over the spots in current frame and next frame
 //  5.3. Use a GOOD COST FUNCTION to determine if the two spots are linked
-//     - method 1: thresholding. Link the first spot that have a distance < threshold
-//     - method 2: cost function c(xt, xt+1). Sweep over all spot candidates and link the one with the least cost
 // 6. Display the result
 
-@Plugin(type = Command.class, menuPath = "Plugins>BII 2023>Homework Tracking Template")
-public class ParticleTracking implements Command {
+@Plugin(type = Command.class, menuPath = "Plugins>BII 2023>TIRFTracking")
+public class TirfTracking implements Command {
 	
 	// pass parameter from the ParticleTrackingTest()
 	@Parameter
 	private double lambda; // lambda ~ 0 is the best !!!
 	
 	public void run() {
-		// for model selection
-		boolean method1 = false;
-		boolean method2 = true;
+		// IMAGE PROCESSING VARIABLES
+		double sigma = 1; // dog filter
+		int bd = 5; // localMax kernel size would be 2*bd+1
+		// base on the line profile, a threshold 1000 seems ok
+		double threshold = 2000; // localMax thresholding (input is a 16 bit image
+		int radius = 2; // spot circle contour
 		
-		// for dog and localmax
-		double sigma = 5;
-		double threshold = 10;
-		
-		// for general parameters
+		// general parameters
 		ImagePlus imp = IJ.getImage();
 		int nt = imp.getNFrames();
+		System.out.println("Number of frames: " + nt);
 		int xmax = imp.getWidth();
 		int ymax = imp.getHeight();
 		
-		// for method 1 thresholding
-		// for method 2 finding offspring
-		double distance_max = 15;
+		// finding potential offspring
+		// set zero (assume tirf protein won't divide, so there is no offspring)
+		double distance_max = 0;
 		
-		// for method 2
+		// cost function
 		double fmax = findMax(imp, nt);
 		double dmax = Math.sqrt(xmax*xmax + ymax*ymax);
 		double intdiff = 0;
@@ -89,14 +68,13 @@ public class ParticleTracking implements Command {
 		ImagePlus dog = dog(imp, sigma);
 		// create dynamic array
 		// use localMax to find the spot and store them in an array of Spots
-		ArrayList<Spot> localmax[] = localMax(dog);
+		ArrayList<Spot> localmax[] = localMax(dog, bd);
 		// select the spots that are above the threshold after localMax
 		ArrayList<Spot> spots[] = filter(dog, localmax, threshold);
 		// connect the spots in positive time order
 		// PART THAT YOU HAVE TO IMPLEMENT AND MODIFY
 		for (int t = 0; t < nt - 1; t++) {
 			System.out.println("Frame " + (t+1));
-			int cur_ind = 0;
 			for (Spot current : spots[t]) { // for each spot in the current frame
 				// for method 2
 				double min_cost = 1;
@@ -104,63 +82,43 @@ public class ParticleTracking implements Command {
 				int ind = 0;
 				for (Spot next : spots[t+1]) { // for each spot in the next frame
 					// COST FUNCTION
-					// 1. THRESHOLDING
-					// if the distance between the two spots is less than distance_max, link them
-					// i.e., if dist. > 3 pixels, there is a breakage in the track
-					if (method1 == true) {
-						if (current.distance(next) < distance_max) {
-							current.link(next);
-							min_ind = ind;
-							// System.out.println("Frame " + (t+1) + " add link between cur " + cur_ind + "(" + current.x + ", " + current.y + ") and next " + min_ind + "(" + next.x + ", " + next.y + ")");
-							break;
-						}
-						ind++;
-					}
-					// 2. DISTANCE and INTENSITY
+					// DISTANCE and INTENSITY
 					// calculate the cost for every spot next in frame t+1
 					// link the spot with the lowest cost
-					if (method2 == true) {
-						intdiff = findIntdiff(imp, t, current, next);
-						// compute the cost
-						temp_cost = getDISINT(current, next, dmax, fmax, lambda, intdiff);
-						if (temp_cost <= min_cost) {
-							min_cost = temp_cost; 
-							min_ind = ind;
-						}
-						ind++;
-						// identify possible offspring
-						if (current.distance(next) < distance_max) {
-							current.offspring(next);
-						}
+					intdiff = findIntdiff(imp, t, current, next);
+					// compute the cost
+					temp_cost = getDISINT(current, next, dmax, fmax, lambda, intdiff);
+					if (temp_cost <= min_cost) {
+						min_cost = temp_cost; 
+						min_ind = ind;
+					}
+					ind++;
+					// identify possible offspring
+					if (current.distance(next) < distance_max) {
+						current.offspring(next);
 					}
 				}
 				// link the spot with the minimum cost
-				//System.out.println("time point: " + (t+1) + " find min cost " + min_cost + " for cur " + cur_ind + " and min_ind " + min_ind);
-				// for method 2
-				if (method2 == true) {
-					Spot good_next = spots[t+1].get(min_ind);
-					//System.out.println("Frame " + (t+1) + " add link between cur " + cur_ind + "(" + current.x + ", " + current.y + ") and next " + min_ind + "(" + good_next.x + ", " + good_next.y + ")");
-					current.link(good_next);
-				}
-				cur_ind++;
+				Spot good_next = spots[t+1].get(min_ind);
+				current.link(good_next);
 			}
 		}
 		// bring back to the first frame
 		Overlay overlay = new Overlay();
-		draw(overlay, spots);
+		draw(overlay, spots, radius);
 		imp.setOverlay(overlay);
 		//System.out.println("Workflow finished");
 	}
 
 
-	private void draw(Overlay overlay, ArrayList<Spot> spots[]) {
+	private void draw(Overlay overlay, ArrayList<Spot> spots[], int radius) {
 		int nt = spots.length;
 		for (int t = 0; t < nt; t++) {
 			// print the time point
-			//System.out.println("overlaying time point: " + (t+1));
+			System.out.println("overlaying time point: " + (t+1));
 			for (Spot spot : spots[t]) {
 				// call the draw function in the Spot class
-				spot.draw(overlay);
+				spot.draw(overlay, radius);
 			}
 		}
 	}
@@ -185,13 +143,14 @@ public class ParticleTracking implements Command {
 				dog.setPosition(1, 1, t + 1);
 				double value = dog.getProcessor().getPixelValue(spot.x, spot.y);
 				if (value > threshold)
+					// set a threshold for spotting
 					out[t].add(spot);
 			}
 		}
 		return out;
 	}
 
-	public Spots[] localMax(ImagePlus imp) {
+	public Spots[] localMax(ImagePlus imp, int bd) {
 		int nt = imp.getNFrames();
 		int nx = imp.getWidth();
 		int ny = imp.getHeight();
@@ -205,9 +164,9 @@ public class ParticleTracking implements Command {
 				for (int y = 1; y < ny - 1; y++) {
 					double v = ip.getPixelValue(x, y);
 					double max = -1;
-					// loop over the 3x3 neighborhood
-					for (int k = -1; k <= 1; k++)
-						for (int l = -1; l <= 1; l++)
+					// loop over the bd neighborhood
+					for (int k = -bd; k <= bd; k++)
+						for (int l = -bd; l <= bd; l++)
 							max = Math.max(max, ip.getPixelValue(x + k, y + l));
 					// if the pixel is the maximum of the neighborhood, add it to the list
 							if (v == max)
@@ -232,9 +191,6 @@ public class ParticleTracking implements Command {
 		return fmax;
 	}
 	
-	// find whether there is an ancestor in the neighborhood
-	// if 
-
 	// get the coordinates of the image
 	public double findIntdiff(ImagePlus imp, int t, Spot current, Spot next) {
 		imp.setSlice(t+1);
