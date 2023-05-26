@@ -14,7 +14,7 @@ public class BleachingCorrectionTest {
         ij.ui().showUI();
         
         // Open image
-        String imagePath = "C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Week03-ImageJ2 plugins development/Homework B-Bleaching Correction/bleach-DHE-real.tif";
+        String imagePath = "C:\\Users\\asus\\Desktop\\EPFL\\Course\\2023 Spring\\Bioimage informatics\\Project\\data\\l_4360_reorder.tif";
         Opener opener = new Opener();
         ImagePlus image = opener.openImage(imagePath);
         image.show();

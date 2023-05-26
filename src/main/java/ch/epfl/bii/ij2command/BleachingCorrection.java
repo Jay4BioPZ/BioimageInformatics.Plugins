@@ -41,8 +41,8 @@ public class BleachingCorrection implements Command {
 		IJ.run(imp, "Select All", "");
 		IJ.run(imp, "Plot Z-axis Profile", "");
 		IJ.run(imp, "32-bit", "");
-		IJ.run(imp, "Make Montage...", "columns=8 rows=7 scale=0.25");
-		IJ.run("Enhance Contrast", "saturated=0.35");
+		//IJ.run(imp, "Make Montage...", "columns=8 rows=7 scale=0.25");
+		//IJ.run("Enhance Contrast", "saturated=0.35");
 		ImagePlus out = imp.duplicate();
 		out.show();
 		
@@ -59,7 +59,7 @@ public class BleachingCorrection implements Command {
 			for (int x = 0; x < nx; x++) {
 				for (int y = 0; y < ny; y++) {
 					double new_v = iin.getPixelValue(x, y);
-					new_v = (new_v-C)*Math.exp(t/tau);
+					new_v = (new_v-C)*Math.exp(t/tau)+C;
 					iout.putPixelValue(x, y, new_v);
 				}
 			}	
@@ -69,8 +69,8 @@ public class BleachingCorrection implements Command {
 		// plot the z-intensity profile after processing
 		IJ.run(out, "Select All", "");
 		IJ.run(out, "Plot Z-axis Profile", "");
-		IJ.run(out, "Make Montage...", "columns=8 rows=7 scale=0.25");
-		IJ.run("Enhance Contrast", "saturated=0.35");
+		//IJ.run(out, "Make Montage...", "columns=8 rows=7 scale=0.25");
+		//IJ.run("Enhance Contrast", "saturated=0.35");
 	}
 	
 	// fitting with imageJ CurveFitter
