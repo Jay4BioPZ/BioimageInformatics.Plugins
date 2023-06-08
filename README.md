@@ -8,7 +8,15 @@ This is an example Maven project implementing an ImageJ command with a Pom adapt
 
 New codes were included for resolving bioimaging tasks (i.e., multidimensional data pixel-wise operation, segmentation...) presented in lectures.
 
-## Available Plugins
+## TIRF Protein Tracking
+
+Together with Kuzey Aydin and Chang Liu, we built a particle tracking workflow for TIRF microscopy images. In this project, I focused on the development of particle detection and trajectory linking.
+
+![workflow](./img/MP_image.png)
+![detection](./img/MP_detection.png)
+![result](./img/MP_result.png)
+
+## Other Available Plugins
 
 ### 1. Bleaching Correction
 
