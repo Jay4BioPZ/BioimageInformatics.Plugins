@@ -3,73 +3,61 @@ package ch.epfl.bii.ij2command.TirfTracking;
 
 /*
  *  BIO-410 Bioimage Informatics Miniproject - TIRF protein tracking
- *  Author: Yung-Cheng Chiang
- *  Latest update: 2023/04/29
- *  
- *  Abstract:
  */
 
 import java.util.ArrayList;
-// for object serialization
-import java.io.FileOutputStream;
-import java.io.ObjectOutputStream;
-import java.io.FileInputStream;
-import java.io.ObjectInputStream;
 
 import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import ij.IJ;
 import ij.ImagePlus;
 import ij.gui.GenericDialog;
 import ij.gui.Overlay;
 import ij.gui.Roi;
+import ij.gui.Plot;
 import ij.measure.CurveFitter;
 import ij.plugin.ImageCalculator;
 import ij.process.ImageProcessor;
 import ij.plugin.frame.RoiManager;
 import ij.measure.Measurements;
 
+// for object serialization
+import java.io.*;
+
 @Plugin(type = Command.class, menuPath = "Plugins>BII 2023>TIRFTracking")
 public class TirfTracking implements Command {
-	// WORKFLOW
-	/* 1. Detection
-	 * 	1.1 Hyperstack reordering: convert from z-stack to time stack
-	 * 	1.2 Exponential correction (skipped)
-	 *  1.3 DoG filter with sigma1 = 1, sigma2 = 6
-	 *  1.4 Median filter (skipped)
-	 *  1.5 Gaussian blur time axis with sigma = 1 + TopHat filter with radius 2
-	 *  1.6 LocalMax with a dynamic threshold: threstime*std of the frame + avoiding multi-maximal spots within the filter
-	 *  
-	 * 2. Linking (pseudo-code)
-	 * 	for current particle in frame t
-	 * 		for next particle in frame from t+1 to t+5 (allow frame skipping)
-	 * 			compute the cost function 
-	 * 			if the cost is the minimal, and distance between current and next doesn't exceed long_link
-	 * 				link between current and next
-	 * 				as long as the link forms, go ahead to the next current particle (break the inner loop
-	 *  draw the linkage between frames
-	 */
 	
 	public void run() {
 		// generate a generic dialog
 		GenericDialog gd = new GenericDialog("TIRF particle tracking");
-		gd.addMessage("The plugin performs TIRF particle tracking and trajectories analysis.\nPlease enter the following parameters to proceed.");
-		gd.addStringField("Image stack path (.tif): ", "C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Project/data/");
-		//gd.addNumericField("Threstime (>=5): ", 5);
-		gd.addNumericField("Lambda (0-1): ", 0.3);
+		gd.addMessage("TIRF particle tracking and trajectories analysis. Please enter the following parameters to proceed.\n ");
+		gd.setInsets(0, 50, 0);
+		gd.addFileField("Image stack path (.tif): ", "C:\\EPFL\\2022-2023 Microtechnique MA4\\Bioimage informatics\\l_4360-crop_outer_long_traj.tif");
+		gd.addNumericField("Lambda (0-1): ", 0.2);
+		gd.addNumericField("Gamma (0-1): ", 0.3);
+		gd.setInsets(0, 180, 0);
+		gd.addCheckbox("Exponential correction", false);
+		gd.setInsets(0, 180, 0);
 		gd.addCheckbox("Diffusing particle", false);
-		gd.addMessage("Authors: BII2023 Group 8");
+		gd.addMessage("\nAuthors: Bioimage Informatics Group 8. Y.Chiang, C.Liu, K.Aydin (2023.05)");
 		gd.showDialog();
 		if(gd.wasCanceled()) {
 			return;
 		}
 		
 		String imagePath = (String)gd.getNextString();
-		//double threstime = (double)gd.getNextNumber();
+		Path path = Paths.get(imagePath);
+        Path folderPath = path.getParent();
+        String folder = folderPath.toString();
+        
 		double lambda = (double)gd.getNextNumber();
+		double gamma = (double)gd.getNextNumber();
+		boolean expcor = (boolean)gd.getNextBoolean();
 		boolean diffuse = (boolean)gd.getNextBoolean();
 		
 		// IMAGE PROCESSING VARIABLES
@@ -82,7 +70,6 @@ public class TirfTracking implements Command {
 			sigma1 = 1;
 			sigma2 = Math.sqrt(2)*sigma1;
 		}
-		int bd = 7; // localMax kernel size would be 2*bd+1
 		int radius = 1; // spot circle contour
 		
 		// DETECTION
@@ -95,57 +82,75 @@ public class TirfTracking implements Command {
 		
 		// start the workflow
 		// STEP D1. Hyperstack reordering
+		IJ.run("Coordinates...", "left=0 right="+xmax+" top=0 bottom="+ymax+" front=0 back="+nz);
 		imp.setDimensions(1, 1, nz);
 		int nt = imp.getNFrames();
 		IJ.log("The dataset have " + nt + " time frames");
-		
 		// STEP D2. Exponential correction
 		//IJ.log("Launch exponential correction...");
-		if (diffuse == false) {
+		if (expcor == true) {
 			imp = imagecorrection(imp, nt, xmax, ymax);
 		}
-		
 		// STEP D3. DoG
 		IJ.log("Start particle detection...");
 		ImagePlus imp_dog = dog(imp, sigma1, sigma2);
-		
-		// STEP D4. Median filter (skipped)
-		
-		// STEP D5. Gaussian blur 3D
+		// STEP D4. Gaussian blur 3D
 		IJ.run(imp_dog, "Gaussian Blur 3D...", "x=0 y=0 z=1");
+		// STEP D5. TopHat filtering
 		IJ.run(imp_dog, "Top Hat...", "radius=2 stack");
 		
-		// STEP D6. LocalMax with a dynamic threshold
-		//ArrayList<Spot> localmax[] = localMax(imp_dog, bd);
-		//ArrayList<Spot> spots[] = filter(imp_dog, localmax, threstime);
-		ArrayList<Spot> spots[] = thresDetect(imp_dog, nt, xmax, ymax);
+		ImagePlus imp_dog_traj = imp_dog.duplicate();
+		ImagePlus imp_dog_arrw = imp_dog.duplicate();
+		
+		// STEP D6. Detect spots either with local max or center of mass method
+		ArrayList<Spot> spots[];
+		if (diffuse == true) {
+			spots = thresDetect(imp_dog, nt, xmax, ymax);
+		}
+		else {
+			int bd = 7;
+			int threstime = 8;
+			ArrayList<Spot> localmax[] = localMax(imp_dog, bd);
+			spots = localMaxfilter(imp_dog, localmax, threstime);
+		}
+		
+		// STEP D7. Prepare the orientation term images
+		ImagePlus imp_future = foreseeDirection(imp);
+		imp_future.show();
 		
 		// LINKING
 		IJ.log("Start particle linking...");
 		// cost function
-		double fmax = findMax(imp, nt);
+		double f1max = findMax(imp, nt);
+		//IJ.log("f1max "+f1max);
+		double f2max = findMax(imp_future, nt);
+		//IJ.log("f2max "+f2max);
 		double dmax = Math.sqrt(xmax*xmax + ymax*ymax);
+		//IJ.log("dmax "+dmax);
 		double intdiff = 0;
+		double dirvalue = 0;
 		double temp_cost = 1;
 		double long_link;
 		
 		for (int t = 0; t < nt - 1; t++) {
 			int indc = 0;
-			for (Spot current : spots[t]) { // for each spot in the current frame
-				// for method 2
+			for (Spot current : spots[t]) {
 				double min_cost = 1;
 				int min_ind = 0;
 				int min_ts = 1;
 				boolean findspot = false;
 				// find candidates in next "few frames"
 				for (int ts = 1; ts < Math.min(nt-t, 6); ts++) {
-					// estimate the local density of spots and compute a good long_link
+					// STEP L1. Estimate the local density of spots and compute a good long_link
 					long_link = estimateLocalDens(current, spots, t, ts, xmax, ymax, diffuse);
+					//System.out.println(long_link);
 					int indn = 0;
-					for (Spot next : spots[t+ts]) { // for each spot in the next frame
+					for (Spot next : spots[t+ts]) {
+						// STEP L2. Compute each cost terms
 						intdiff = findIntdiff(imp, t, current, next);
-						// compute the cost
-						temp_cost = getDISINT(current, next, dmax, fmax, lambda, intdiff);
+						dirvalue = findDirValue(imp_future, t, next);
+						// STEP L3. Compute the cost and locate the best candidate
+						temp_cost = getCOST(current, next, dmax, f1max, lambda, intdiff, f2max, gamma, dirvalue);
 						if (temp_cost <= min_cost && current.distance(next) <= long_link) {
 							min_cost = temp_cost;
 							min_ind = indn;
@@ -158,24 +163,79 @@ public class TirfTracking implements Command {
 						break;
 					}
 				}
-				// only when proper candidate is found then form link
-				// otherwise just cut the trajectories
+				// STEP L4. Form links
 				if (findspot == true) {
 					int nextt = t+min_ts;
 					System.out.println("Link (" + t + ", " + indc + ") to (" + nextt + ", " + min_ind + ")");
 					Spot good_next = spots[t+min_ts].get(min_ind);
 					current.link(good_next);
 				}
+				else {
+					//System.out.println("No link found, long_link");
+				}
 				indc++;
 			}
 		}
-		//ArrayList<Spot> spots_filt = removeBadTraj(spots, nt); // remove single spot trajectory by changing the "realTraj" attribute in spot to false
-		// overlaying the trajectories to the image stack
-		IJ.log("Visualizing trajectories (it takes several minutes)...");
-		Overlay overlay = new Overlay();
-		draw(overlay, spots, radius);
-		imp_dog.setOverlay(overlay);
-		IJ.log("Finalizing the visualization");
+		
+		IJ.log("Tracing individual trajectories...");
+		ArrayList<ArrayList<int[]>> Arrayofall = new ArrayList<>();
+		
+		// TRAJECTORY ANALYSIS
+		// STEP T1. Convert Spots to a list of trajectories for later parameter computation
+		// Get through all the frames.
+		// In an order of finding one spot and tracking all of its trajectory points, then switch to the next beginning spot.
+		// Add Arrayofone into Arrayofall.
+		
+		for (int t = 0; t < nt-1; t++) {
+		    for (Spot current : spots[t]) {
+		        if (current.track == false) {
+		        	Spot first = current;
+		        	while(first.prev != null) {
+		        		first = first.prev;
+		        	}
+		        	assignDirections(first);
+		            ArrayList<int[]> Arrayofone = new ArrayList<>();
+		            Arrayofone = findNext(first, Arrayofone);
+		            Arrayofall.add(Arrayofone);
+		        }
+		    }
+		}
+		
+		
+		// STEP T2. Characterize the trajectories with diffusion coefficient and speed
+		double[] diffCoeffs = diffusionCalculator(Arrayofall);
+		double[] speeds = speedCalculator(Arrayofall);
+		
+		IJ.log("Saving the data...");
+		
+		// STEP T3. Save results as csv
+		try {
+			saveCoordinates(Arrayofall, speeds, diffCoeffs, folder);
+		} catch (Exception e) {
+			System.out.println("Error writing to the file");
+		}
+	
+		IJ.log("Saved the data");
+		
+		IJ.log("Plotting...");
+		
+		// STEP T5. Plot histograms
+		drawHistogram(diffCoeffs, "Diffusion Coefficients", "Pixel^2/s");
+		
+		drawHistogram(speeds, "Speeds", "Pixel/s");
+		IJ.log("Plots done");
+		
+		IJ.log("Finalizing the visualization... (takes tens of minutes for raw images)");
+		// Create overlay of trajectories
+		Overlay overlay_traj = new Overlay();
+		draw(overlay_traj, spots, radius);
+		// Overlay direction arrows of the long trajectories (displacement > 5 pixel)
+		Overlay overlay_arrw = new Overlay();
+		drawDirections(overlay_arrw, spots, radius);
+		imp_dog_traj.setOverlay(overlay_traj);
+		imp_dog_arrw.setOverlay(overlay_arrw);
+		imp_dog_traj.show();
+		imp_dog_arrw.show();
 	}
 
 	
@@ -256,9 +316,20 @@ public class TirfTracking implements Command {
 			}
 		}
 	}
-
-	// the dog filter with sigma and sigma*sqrt(2)
 	
+	// STPE T2. Draw direction arrows
+	private void drawDirections(Overlay overlay, ArrayList<Spot> spots[], int radius) {
+		int nt = spots.length;
+		for (int t = 0; t < nt; t++) {
+			// print the time point
+			//System.out.println("overlaying time point: " + (t+1));
+			for (Spot spot : spots[t]) {
+				// call the draw function in the Spot class
+				spot.drawDirections(overlay, radius);
+			}
+		}
+	}
+
 	// STEP D3. DoG filter
 	private ImagePlus dog(ImagePlus imp, double sigma1, double sigma2) {
 		//System.out.println("Step D2. DoG filtering...");
@@ -272,26 +343,8 @@ public class TirfTracking implements Command {
 		dog.show();
 		return dog;
 	}
-	
 
-	private ArrayList<Spot>[] filter(ImagePlus imp, ArrayList<Spot> spots[], double threstime) {
-		int nt = spots.length;
-		ArrayList<Spot> out[] = new Spots[nt];
-		for (int t = 0; t < nt; t++) {
-			out[t] = new Spots();
-			// set threshold to be 2 times std of the image
-			imp.setPosition(1, 1, t + 1);
-			double threshold = threstime*imp.getStatistics().stdDev;
-			for (Spot spot : spots[t]) {
-				double value = imp.getProcessor().getPixelValue(spot.x, spot.y);
-				if (value > threshold)
-					// set a threshold for spotting
-					out[t].add(spot);
-			}
-		}
-		return out;
-	}
-
+	// STEP D6a. Center of mass detection
 	public Spots[] thresDetect(ImagePlus imp, int nt, int xmax, int ymax) {
 		RoiManager rm = new RoiManager();
 		int options = Measurements.CENTER_OF_MASS;
@@ -300,18 +353,26 @@ public class TirfTracking implements Command {
 		//IJ.run(imp_bn, "Watershed", "stack");
 		//IJ.run(imp_bn, "Analyze Particles...", "size=7-Infinity show=Masks clear stack");
 		//IJ.run(imp_bn, "Options...", "iterations=1 count=1 black do=Skeletonize stack");
-		IJ.run(imp_bn, "Analyze Particles...", "size=10-Infinity display clear overlay add stack");
+		IJ.run(imp_bn, "Analyze Particles...", "size=3-Infinity display clear overlay add stack");
 		rm.runCommand(imp_bn, "Show None");
 		Spots spots[] = new Spots[nt];
 		Roi[] roiArray = rm.getRoisAsArray();
+//		int num_roi = roiArray.length;
+//		if (num_roi >= 200*nt) {
+//			System.out.println("Too many particles ("+num_roi/nt+"/frame) detected. Try the 'Noisy data' option.");
+//			System.exit(1);
+//		}
+//		else {
+//			IJ.log("Particles ("+num_roi/nt+"/frame) are detected.");
+//		}
 		int count = 1;
 		int dcount = 0;
 		int lframe = -1;
 		for (Roi roi : roiArray) {
-			int cd = count/1000;
+			int cd = count/2000;
 			if (cd>dcount) {
 				dcount++;
-				//IJ.log("Detected rois: " + count);
+				IJ.log("Detected rois: " + count);
 			}
 			int frame = roi.getPosition() - 1;
 			if (frame >= lframe) {
@@ -327,7 +388,39 @@ public class TirfTracking implements Command {
 		}
 		return spots;
 	}
-	
+
+	// Step D6b. LocalMax
+	private ArrayList<Spot>[] localMaxfilter(ImagePlus imp, ArrayList<Spot> spots[], double threstime) {
+		int nt = spots.length;
+		int count = 1;
+		int dcount = 0;
+		ArrayList<Spot> out[] = new Spots[nt];
+		for (int t = 0; t < nt; t++) {
+			out[t] = new Spots();
+			// set threshold to be 2 times std of the image
+			imp.setPosition(1, 1, t + 1);
+			double threshold = threstime*imp.getStatistics().stdDev;
+			for (Spot spot : spots[t]) {
+				double value = imp.getProcessor().getPixelValue(spot.x, spot.y);
+				if (value > threshold) {
+					// set a threshold for spotting
+					int cd = count/2000;
+					if (cd>dcount) {
+						dcount++;
+						IJ.log("Detected rois: " + count);	
+					}
+					count++;
+					if (count >= 200*nt) {
+						System.out.println("Too many particles ("+count/nt+"/frame) detected. Check your input.");
+						System.exit(1);
+					}
+					out[t].add(spot);
+				}
+			}
+		}
+		return out;
+	}
+		
 	public Spots[] localMax(ImagePlus imp, int bd) {
 		int nt = imp.getNFrames();
 		int nx = imp.getWidth();
@@ -366,7 +459,7 @@ public class TirfTracking implements Command {
 		// return a list of spots
 		return spots;
 	}
-
+	
 	// compute the max of the image
 	public double findMax(ImagePlus imp, int nt) {
 		double fmax = 0;
@@ -380,7 +473,19 @@ public class TirfTracking implements Command {
 		return fmax;
 	}
 	
-	// estimate local density and the long_link
+	// STEP D7. Preparation of the orentation map
+	// convolution using a [0,0,0,0,0,0,3,3,4,4,5] filter on time axis
+	public ImagePlus foreseeDirection(ImagePlus imp) {
+		ImagePlus future = imp.duplicate();
+		IJ.run(future, "Reslice [/]...", "output=1.000 start=Top avoid");
+		IJ.run(future, "Convolve...", "text1=0\n0\n0\n0\n0\n0\n3\n3\n4\n4\n5\n normalize stack");
+		IJ.run(future, "Reslice [/]...", "output=1.000 start=Top avoid");
+		IJ.run(future, "Invert", "stack");
+		IJ.run(future, "8-bit", "");
+		return future;
+	}
+	
+	// STEP L1. Estimate local density and give a good long_link
 	public double estimateLocalDens(Spot current, ArrayList<Spot>[] spots, int t, int ts, int xmax, int ymax, boolean diffuse) {
 		double long_link;
 		int ccount = 0;
@@ -392,7 +497,6 @@ public class TirfTracking implements Command {
 		else {
 			bound = 4;
 		}
-		
 		int cx = current.x;
 		int cy = current.y;
 		for (Spot spot: spots[t]) {
@@ -419,55 +523,246 @@ public class TirfTracking implements Command {
 		else {
 			long_link = (double)bound/(ccount+ncount*ts);
 		}
+		//long_link = 5;
 		return long_link;
 	}
 	
-	// get the coordinates of the image
+
+	
+	// STEP L2. Find the intensity term for specific pixel
 	public double findIntdiff(ImagePlus imp, int t, Spot current, Spot next) {
 		imp.setSlice(t+1);
 		ImageProcessor pimp1 = imp.getProcessor();
 		double v1 = pimp1.getPixelValue(current.x, current.y);
+		//IJ.log("intdiff v1 "+v1);
 		imp.setSlice(t+2);
 		ImageProcessor pimp2 = imp.getProcessor();
 		double v2 = pimp2.getPixelValue(next.x, next.y);
+		//IJ.log("intdiff v2 "+v2);
 		double intdiff = Math.abs(v1-v2);
 		return intdiff;
 	}
+	
+	// STEP L2. Find the orientation term for specific pixel
+	public double findDirValue(ImagePlus future, int t, Spot next) {
+		future.setSlice(t+1);
+		//IJ.log("DirValue x y: "+ next.x + next.y);
+		ImageProcessor pimp = future.getProcessor();
+		double value = pimp.getPixelValue(next.x, next.y);
+		return value;
+	}
 
-	// compute the DISINT cost function
-	public double getDISINT(Spot current, Spot next, double dmax, double fmax, double lambda, double intdiff) {
-		double cost = 0;
+	// STEP L3. Compute the cost function
+	public double getCOST(Spot current, Spot next, double dmax, double f1max, double lambda, double intdiff, double f2max, double gamma, double dirvalue) {
+		//IJ.log("intdiff "+intdiff+" dirvalue "+dirvalue);
+		double cost;
 		double dist = current.distance(next);
 		// do something
-		cost = (1-lambda)*(dist/dmax)+lambda*(intdiff)/fmax;
+		cost = (double)(1-lambda-gamma)*(dist/dmax) + lambda*(intdiff)/(f1max) + gamma*(dirvalue)/(f2max);
 		return cost;
 	}
 	
-	// remove single point trajectories
-//	public ArrayList<Spot> removeBadTraj(ArrayList<Spot> spots[], int nt) {
-//		ArrayList<Spot> out[] = new Spots[nt];
-//		for (int t = 0; t < nt; t++) {
-//			out[t] = new Spots();
-//			for (Spot current : spots[t]) {
-//				if(current)
-//			}
-//		}
-//		return out;
-//	}
+	// STEP T1. Recursively track the trajectory starting from specific points
+	// Use recursion to go through all current points with next point.
+	// Add coordinates into ArrayOfOne.
+	public ArrayList<int[]> findNext(Spot P, ArrayList<int[]> ArrayOfOne) {
+	    int[] coordinates = { P.x, P.y, P.t };
+	    ArrayOfOne.add(coordinates);
+	    P.track = true;
+
+	    if (P.next == null) {
+	        return ArrayOfOne;
+	    } 
+	    else {
+	        ArrayOfOne = findNext(P.next, ArrayOfOne);
+	    }
+
+	    return ArrayOfOne;
+	}
 	
-	// write serialized file
-	public void writeSpots(ArrayList<Spot> spots[]) {
-		// save the spots in the current directory
-		try{
-			FileOutputStream fos = new FileOutputStream("C:/Users/asus/Desktop/EPFL/Course/2023 Spring/Bioimage informatics/Project/data/spots.ser");
-			ObjectOutputStream oos = new ObjectOutputStream(fos);
-			oos.writeObject(spots);
-			oos.flush();
-			oos.close();
-		} catch (Exception ioe) {
-			ioe.printStackTrace();
+	// STEP T2. Compute diffusion parameter
+	public double[] diffusionCalculator(ArrayList<ArrayList<int[]>> spotlist) {
+		int spotNumber = spotlist.size();
+		
+		//diffusion coefficient for each detected particle
+		double[] diffusionCoefficients = new double[spotNumber];
+		
+		for(int i = 0; i<spotNumber; i++) {
+			
+			int min_t = Integer.MAX_VALUE;
+			int max_t = -1;
+			
+			int x_1=0;
+			int x_2=0;
+			int y_1=0;
+			int y_2=0;
+			
+			double mse_distance = 0;
+			
+			for(int[] spotsnapshot : spotlist.get(i)) {
+				
+				//find the first and last occurence of the same spot
+				if(spotsnapshot[2]<min_t) {
+					min_t=spotsnapshot[2];
+					x_1=spotsnapshot[0];
+					y_1=spotsnapshot[1];
+				} if(spotsnapshot[2]>max_t) {
+					max_t=spotsnapshot[2];
+					x_2=spotsnapshot[0];
+					y_2=spotsnapshot[1];
+				}
+			}
+			
+			//calculate distance between start and the end
+			mse_distance = Math.pow(x_1-x_2, 2) + Math.pow(y_1-y_2, 2);
+			
+			//calculate diffusion coefficient: d=4Dt
+			if(max_t-min_t==0) {
+				diffusionCoefficients[i]=0;
+				continue;
+			}
+			
+			diffusionCoefficients[i] = mse_distance/(4*(max_t-min_t));
+		}
+		
+		
+		double avg=0;
+		
+		for (int i = 0; i < diffusionCoefficients.length; i++) {
+            avg += diffusionCoefficients[i];
+        }
+ 
+        double average = avg / diffusionCoefficients.length;
+        
+        IJ.log("Average diffusion coefficient is: " + average);
+		
+		return diffusionCoefficients;
+	}
+	
+	// STEP T2. Compute speed parameter
+	public double[] speedCalculator(ArrayList<ArrayList<int[]>> spotlist) {
+		int spotNumber = spotlist.size();
+		
+		double[] speeds = new double[spotNumber];
+		
+		for(int i = 0; i<spotNumber; i++) {
+			
+			int min_t = Integer.MAX_VALUE;
+			int max_t = -1;
+			
+			double distance = 0;
+			
+			for(int j=1; j<spotlist.get(i).size(); j++) {
+				
+				 int[] spotsnapshot = spotlist.get(i).get(j);
+				 int[] previoussnapshot = spotlist.get(i).get(j-1);
+				
+				if(spotsnapshot[2]<min_t) {
+					min_t=spotsnapshot[2];
+				} if(spotsnapshot[2]>max_t) {
+					max_t=spotsnapshot[2];
+				}
+				
+				//calculates the distance advanced between the previous spot and this one
+				//keeps adding
+				distance += Math.sqrt(Math.pow(spotsnapshot[0]-previoussnapshot[0], 2) 
+									+ Math.pow(spotsnapshot[1]-previoussnapshot[1], 2));
+			}
+			
+			if(max_t-min_t==0) {
+				//In case there is a single data for the spot
+				speeds[i]=0;
+				continue;
+			}
+			
+			//linear speed is total distance divided by total time
+			speeds[i] = distance/(max_t-min_t);
+		}
+		
+		double avg=0;
+		
+		for (int i = 0; i < speeds.length; i++) {
+            avg += speeds[i];
+        }
+ 
+        double average = avg / speeds.length;
+        
+        IJ.log("Average speed is: " + average);
+		
+		return speeds;
+	}
+	
+	// STEP T5. Compute direction vector
+	public void assignDirections(Spot spot) {
+		int x_1 = spot.x;
+		int y_1 = spot.y;
+		
+		Spot last=spot;
+		
+		while(last.next != null) {
+			last = last.next;
+		}
+		
+		int x_2 = last.x;
+		int y_2 = last.y;
+		
+		double distance = spot.distance(last);
+		
+		if(distance<5) return;
+		
+		while(spot.next != null) {
+			spot.direction = new int[] {x_1-x_2, y_1-y_2};
+			spot = spot.next;
 		}
 	}
-
 	
+	// STEP T4. Plot histogram
+	public void drawHistogram(double[] values, String title, String xTitle) {
+		Plot p = new Plot(title, xTitle, "Counts");
+		
+		p.addHistogram(values);
+		p.show();
+	}
+	
+	// STEP T3. Save trajectory coordinates and parameters in csv file
+	//col1: spot number, col2: x, col3: y, col4: t
+	public void saveCoordinates(ArrayList<ArrayList<int[]>> spotlist, double[] speeds, double[] diffusionCoeffs, String folder) throws IOException {
+		String filename = folder + "\\Spots.csv";
+		File csvFile = new File(filename);
+		System.out.println(csvFile.getAbsolutePath());
+		FileWriter writer = new FileWriter(csvFile);
+		
+		int spotnumber = 0;
+		
+		for (ArrayList<int[]> spot : spotlist) {
+			
+			++spotnumber;
+			
+			for(int[] spotsnapshot : spot) {
+				
+				StringBuilder line = new StringBuilder();
+				
+				if(spotsnapshot.length < 3) continue;
+				
+				line.append(String.valueOf(spotnumber));
+				line.append(',');
+			    
+			    for (int i = 0; i < spotsnapshot.length; i++) {
+			    	
+			        line.append(String.valueOf(spotsnapshot[i]));
+			        line.append(',');
+			    }
+			    
+		        line.append(String.valueOf(speeds[spotnumber]));
+		        line.append(',');
+		        line.append(String.valueOf(diffusionCoeffs[spotnumber]));
+			    line.append("\n");
+			    
+			    writer.write(line.toString());
+			}
+			
+		}
+		
+		writer.close();
+	}
 }
