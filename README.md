@@ -8,6 +8,7 @@ This is an example Maven project implementing an ImageJ command with a Pom adapt
 
 New codes were included for resolving bioimaging tasks (i.e., multidimensional data pixel-wise operation, segmentation...) presented in lectures.
 
+
 ## TIRF Protein Tracking (Mini-project)
 
 **Code avaiable [here](./src/main/java/ch/epfl/bii/ij2command/TirfTracking/).**
