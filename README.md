@@ -27,7 +27,7 @@ We can see from the raw data that particles feature diverse moving patterns. In 
 
 ### Trajectory linking
 
-I designed a cost function for forming correct linking that represents particle tractories. In addition to the distance term and the intensity term, I added the orientation term $O_{t+s}$. The orientation term is the result of convolution by a time filter $(0,0,0,0,0,0,3,3,4,4,5)$ (inverted). It plays as an indicator of future, giving a clue of which direction the particle is moving towards. A lower $O_{t+s}$ implies a higher chance that the particle locates at the position after few frames. In addition, we implement linking not only between frame $t$ and $t+1$. Frame skipping is possible as $s=1,2,3,4,5$.
+I designed a cost function for forming correct linking that represents particle trajectories. In addition to the distance term and the intensity term, I added the orientation term $O_{t+s}$. The orientation term is the result of convolution by a time filter $(0,0,0,0,0,0,3,3,4,4,5)$ (inverted). It plays as an indicator of future, giving a clue of which direction the particle is moving towards. A lower $O_{t+s}$ implies a higher chance that the particle locates at the position after few frames. In addition, we implement linking not only between frame $t$ and $t+1$. Frame skipping is possible as $s=1,2,3,4,5$.
 
 $$ c(x_t, x_{t+s}) = (1-\lambda-\gamma)\frac{d(x_t, x_t+s)}{d_{\text{max}}}+\lambda\frac{|f(x_t)-f(x_{t+s})|}{f_{\text{max}}}+\gamma\frac{O(x_{t+s})}{O_{\text{max}}} $$
 
